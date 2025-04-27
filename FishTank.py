@@ -17,14 +17,11 @@ GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 YELLOW = (255, 255, 0)
 
-# Game settings
+# Game settings - initial values
 BUBBLE_SPEED = 2
-OBSTACLE_SPEED = 3
 BUBBLE_SPAWN_RATE = 0.02
-OBSTACLE_SPAWN_RATE = 0.01
 BUBBLE_SIZE = 20
 OBSTACLE_WIDTH = 80
-OBSTACLE_HEIGHT = random.randint(100, 200)
 
 class Player:
     def __init__(self):
@@ -34,7 +31,6 @@ class Player:
         self.height = 30
         self.y_speed = 0
         self.max_speed = 8
-        # Load fish image (or create a polygon if no image)
         self.rect = pygame.Rect(self.x, self.y, self.width, self.height)
         
     def update(self, mouse_y_ratio):
@@ -84,12 +80,15 @@ class Bubble:
         self.rect.x = self.x
         
     def draw(self, screen):
-        pygame.draw.circle(screen, (200, 200, 255), (self.x, self.y), self.size)
+        # Grey bubble with a lighter highlight
+        bubble_color = (180, 180, 180)  # Grey color
+        pygame.draw.circle(screen, bubble_color, (self.x, self.y), self.size)
         # Add a little reflection highlight
-        pygame.draw.circle(screen, WHITE, (self.x - self.size//3, self.y - self.size//3), self.size//4)
+        highlight_color = (220, 220, 220)  # Light grey for highlight
+        pygame.draw.circle(screen, highlight_color, (self.x - self.size//3, self.y - self.size//3), self.size//4)
 
 class Obstacle:
-    def __init__(self):
+    def __init__(self, obstacle_speed):
         self.width = OBSTACLE_WIDTH
         self.height = random.randint(100, 300)
         self.x = SCREEN_WIDTH + self.width
@@ -99,7 +98,7 @@ class Obstacle:
             self.y = 0
         else:
             self.y = SCREEN_HEIGHT - self.height
-        self.speed = OBSTACLE_SPEED
+        self.speed = obstacle_speed
         self.rect = pygame.Rect(self.x, self.y, self.width, self.height)
         self.color = DARK_BLUE
         
@@ -122,14 +121,31 @@ class Obstacle:
                 pygame.draw.circle(screen, (255, 100, 100), 
                                   (x_pos, self.y + random.randint(10, 30)), 10)
 
-def generate_bubbles(bubbles):
-    if random.random() < BUBBLE_SPAWN_RATE:
+def generate_bubbles(bubbles, spawn_rate):
+    if random.random() < spawn_rate:
         bubbles.append(Bubble())
     return bubbles
 
-def generate_obstacles(obstacles):
-    if random.random() < OBSTACLE_SPAWN_RATE:
-        obstacles.append(Obstacle())
+def generate_obstacles(obstacles, spawn_rate, obstacle_speed):
+    # Check if we should spawn a new obstacle
+    if random.random() < spawn_rate:
+        # Check if there's enough distance from the last obstacle
+        min_distance = 10  # Minimum pixel gap between obstacles
+        can_spawn = True
+        
+        # Find the rightmost obstacle (closest to screen edge)
+        rightmost_x = 0
+        for obstacle in obstacles:
+            if obstacle.x > rightmost_x:
+                rightmost_x = obstacle.x
+        
+        # Only spawn if there's enough distance or no obstacles
+        if obstacles and (SCREEN_WIDTH - rightmost_x) < min_distance:
+            can_spawn = False
+            
+        if can_spawn:
+            obstacles.append(Obstacle(obstacle_speed))
+    
     return obstacles
 
 def main():
@@ -145,14 +161,9 @@ def main():
     score = 0
     game_over = False
     
-    # Background elements
-    background_bubbles = []
-    for _ in range(20):
-        size = random.randint(3, 10)
-        x = random.randint(0, SCREEN_WIDTH)
-        y = random.randint(0, SCREEN_HEIGHT)
-        speed = random.random() * 0.5  # Slow moving background bubbles
-        background_bubbles.append([x, y, size, speed])
+    # Game difficulty variables - these can be modified inside the function
+    obstacle_spawn_rate = 0.01
+    obstacle_speed = 3
     
     # Game loop
     running = True
@@ -171,6 +182,8 @@ def main():
                     obstacles = []
                     score = 0
                     game_over = False
+                    obstacle_spawn_rate = 0.01  # Reset difficulty
+                    obstacle_speed = 3
         
         if not game_over:
             # Get mouse position for 1D control (only using Y position)
@@ -181,23 +194,16 @@ def main():
             player.update(mouse_y_ratio)
             
             # Generate and update bubbles
-            bubbles = generate_bubbles(bubbles)
+            bubbles = generate_bubbles(bubbles, BUBBLE_SPAWN_RATE)
             bubbles = [bubble for bubble in bubbles if bubble.x + bubble.size > 0]
             for bubble in bubbles:
                 bubble.update()
                 
             # Generate and update obstacles
-            obstacles = generate_obstacles(obstacles)
+            obstacles = generate_obstacles(obstacles, obstacle_spawn_rate, obstacle_speed)
             obstacles = [obstacle for obstacle in obstacles if obstacle.x + obstacle.width > 0]
             for obstacle in obstacles:
                 obstacle.update()
-            
-            # Update background bubbles
-            for bubble in background_bubbles:
-                bubble[0] -= bubble[3]  # Move left
-                if bubble[0] < -bubble[2]:
-                    bubble[0] = SCREEN_WIDTH + bubble[2]
-                    bubble[1] = random.randint(0, SCREEN_HEIGHT)
             
             # Collision detection
             for bubble in bubbles[:]:
@@ -211,16 +217,12 @@ def main():
                     
             # Increase difficulty over time
             if score > 0 and score % 10 == 0:
-                OBSTACLE_SPAWN_RATE = min(0.05, OBSTACLE_SPAWN_RATE + 0.001)
-                OBSTACLE_SPEED = min(8, OBSTACLE_SPEED + 0.1)
+                obstacle_spawn_rate = min(0.05, obstacle_spawn_rate + 0.001)
+                obstacle_speed = min(8, obstacle_speed + 0.1)
         
         # Drawing
-        # Draw background
+        # Draw background - just a solid blue
         screen.fill(BLUE)
-        
-        # Draw background bubbles
-        for x, y, size, _ in background_bubbles:
-            pygame.draw.circle(screen, (100, 100, 200), (int(x), int(y)), size)
         
         # Draw game objects
         for bubble in bubbles:
@@ -235,6 +237,10 @@ def main():
         font = pygame.font.SysFont(None, 36)
         score_text = font.render(f"Score: {score}", True, WHITE)
         screen.blit(score_text, (10, 10))
+        
+        # Draw difficulty level
+        speed_text = font.render(f"Speed: {obstacle_speed:.1f}", True, WHITE)
+        screen.blit(speed_text, (10, 50))
         
         # Draw game over
         if game_over:
